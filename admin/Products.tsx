@@ -94,13 +94,12 @@ const Products: React.FC = () => {
     }
   };
 
-  // Utilitário robusto para converter valores do Excel para números
-  const parseXLSXNumber = (val: any): number => {
+  // Utilitário para garantir que valores sejam números
+  const ensureNumber = (val: any): number => {
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
-      const cleaned = val.replace(/[^\d,.-]/g, '').replace(',', '.');
-      const num = parseFloat(cleaned);
-      return isNaN(num) ? 0 : num;
+      const clean = val.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+      return parseFloat(clean) || 0;
     }
     return 0;
   };
@@ -126,12 +125,12 @@ const Products: React.FC = () => {
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Produtos");
-      XLSX.writeFile(wb, `crinf_produtos_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `crinf_estoque_${new Date().toISOString().split('T')[0]}.xlsx`);
       
-      alert("✅ Catálogo exportado com sucesso! O arquivo foi salvo na sua pasta de downloads.");
+      alert("✅ Exportação concluída! O arquivo foi baixado com sucesso.");
     } catch (err) {
       console.error(err);
-      alert("❌ Ocorreu um erro ao tentar exportar o arquivo Excel.");
+      alert("❌ Erro ao exportar: Verifique os dados ou tente novamente.");
     }
   };
 
@@ -149,28 +148,32 @@ const Products: React.FC = () => {
         const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
 
         if (jsonData.length === 0) {
-          alert("⚠️ O arquivo parece estar vazio ou não contém dados válidos.");
+          alert("⚠️ O arquivo Excel parece estar vazio.");
           return;
         }
 
-        let count = 0;
+        let importedCount = 0;
+        let updatedCount = 0;
+
         for (const row of jsonData) {
-          // Mapeamento flexível de chaves (aceita variações de nomes de coluna)
+          // Mapeamento tolerante de colunas
+          const productId = String(row.ID || row.id || `p-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`);
+          
           const product: Product = {
-            id: String(row.ID || row.id || `p-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`),
+            id: productId,
             name: String(row.Nome || row.name || row.Produto || 'Produto sem nome'),
-            description: String(row.Descricao || row.description || ''),
+            description: String(row.Descricao || row.description || row.Obs || ''),
             shortDescription: String(row.Destaque || row.shortDescription || ''),
-            purchasePrice: parseXLSXNumber(row.Preco_Compra || row.purchasePrice || row.Custo || 0),
-            salePrice: parseXLSXNumber(row.Preco_Venda || row.salePrice || row.Preco || 0),
-            stock: parseXLSXNumber(row.Estoque || row.stock || row.Quantidade || 0),
-            category: String(row.Categoria || row.category || 'Hardware'),
-            barcode: String(row.Barcode || row.barcode || row['Código de Barras'] || ''),
+            purchasePrice: ensureNumber(row.Preco_Compra || row.purchasePrice || row.Custo || 0),
+            salePrice: ensureNumber(row.Preco_Venda || row.salePrice || row.Preco || 0),
+            stock: ensureNumber(row.Estoque || row.stock || row.Quantidade || 0),
+            category: String(row.Categoria || row.category || 'Geral'),
+            barcode: String(row.Barcode || row.barcode || row.SKU || ''),
             condition: (row.Condicao === 'Usado' || row.condition === 'Usado' ? 'Usado' : 'Novo') as 'Novo' | 'Usado',
             warranty: String(row.Garantia || row.warranty || '90 Dias'),
             isOnline: (row.Online === 'Sim' || row.isOnline === true || row.online === 'Sim'),
             qualityAlert: (row.Alerta_Qualidade === 'Sim' || row.qualityAlert === true),
-            image: 'https://i.imgur.com/kS5sM6C.png',
+            image: row.Imagem || 'https://i.imgur.com/kS5sM6C.png',
             supplierId: '',
             exchangesCount: 0,
             salesCount: 0,
@@ -178,20 +181,22 @@ const Products: React.FC = () => {
           };
 
           const exists = products.find(p => p.id === product.id);
-          if (!exists) {
+          if (exists) {
+            await updateProduct(product);
+            updatedCount++;
+          } else {
             await addProduct(product);
-            count++;
+            importedCount++;
           }
         }
-        alert(`🎉 Sucesso! ${count} novos produtos foram importados e adicionados ao sistema.`);
+        alert(`🎉 Sucesso! \n${importedCount} novos produtos adicionados. \n${updatedCount} produtos existentes atualizados.`);
       } catch (err) {
         console.error("Erro na importação:", err);
-        alert("❌ Erro na Importação: Certifique-se de que o arquivo é um XLSX válido e que os cabeçalhos das colunas não foram removidos.");
+        alert("❌ Erro no processamento do arquivo. Verifique se o formato está correto (XLSX).");
       }
     };
     reader.readAsArrayBuffer(file);
-    // Limpar o input para permitir importar o mesmo arquivo novamente se necessário
-    e.target.value = '';
+    e.target.value = ''; // Limpa o input para permitir re-importar o mesmo arquivo
   };
 
   const profit = (editingProduct?.salePrice || 0) - (editingProduct?.purchasePrice || 0);
