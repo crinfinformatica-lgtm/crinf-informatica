@@ -1,0 +1,7 @@
+{
+  "name": "CRINFINFORMÁTICA",
+  "description": "Sistema completo de e-commerce e gestão administrativa para loja de informática e serviços técnicos, com controle de estoque, agendamento de serviços e ferramentas de edição de imagem.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
